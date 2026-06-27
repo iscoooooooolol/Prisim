@@ -355,6 +355,16 @@ local function Neumorph(props)
     uiCorner(surface, radius)
     surface.Parent = container
 
+    -- AutoSize support: when enabled, surface and container grow to fit content.
+    -- Used by Section (auto-height panels). Shadows follow via Scale(1,1).
+    if props.AutoSize then
+        container.AutomaticSize = Enum.AutomaticSize.Y
+        container.ClipsDescendants = false
+        surface.Size = UDim2.fromScale(1, 0)
+        surface.AutomaticSize = Enum.AutomaticSize.Y
+        surface.ClipsDescendants = false
+    end
+
     local pressed = false
     local function setPressed(state)
         pressed = state
@@ -2022,6 +2032,7 @@ function Section.new(tab, opts)
     local neu = Neumorph({
         Name = "Section_" .. self.Name,
         Size = UDim2.fromScale(1, 0),
+        AutoSize = true,
         Color = Theme.Surface,
         Radius = 16,
         ShadowOffset = 3,
@@ -2030,7 +2041,6 @@ function Section.new(tab, opts)
     })
     self._neu = neu
     self._frame = neu.Container
-    self._frame.AutomaticSize = Enum.AutomaticSize.Y
 
     uiPadding(neu.Surface, 14, 14, 14, 14)
     local layout = uiList(neu.Surface, Enum.FillDirection.Vertical, 8, Enum.HorizontalAlignment.Center)
@@ -2332,20 +2342,26 @@ function Window:_Build()
 
     uiPadding(win.Surface, isMob and 0 or 16, isMob and 0 or 16, isMob and 0 or 16, isMob and 0 or 16)
 
-    -- Inner layout
-    local inner
+    -- Inner container
+    local inner = Instance.new("Frame")
+    inner.Name = "Inner"
+    inner.BackgroundTransparency = 1
+    inner.Size = UDim2.fromScale(1, 1)
+    inner.Parent = win.Surface
+
     if isMob then
-        -- Vertical: header on top, content fills, tabs at bottom
-        inner = Instance.new("Frame")
-        inner.BackgroundTransparency = 1
-        inner.Size = UDim2.fromScale(1, 1)
-        inner.Parent = win.Surface
+        --===========================================================
+        -- MOBILE LAYOUT: header (top) + content (middle) + tabbar (bottom)
+        -- Uses manual positioning — no UIListLayout (more reliable on mobile)
+        --===========================================================
         uiPadding(inner, 12, 8, 12, 8)
-        local il = uiList(inner, Enum.FillDirection.Vertical, 8, Enum.HorizontalAlignment.Center)
-        -- header
+
+        -- Header
         local header = Instance.new("Frame")
+        header.Name = "Header"
         header.BackgroundTransparency = 1
-        header.Size = UDim2.fromScale(1, 32)
+        header.Size = UDim2.new(1, 0, 0, 32)
+        header.Position = UDim2.fromOffset(0, 0)
         header.Parent = inner
         local title = Instance.new("TextLabel")
         title.BackgroundTransparency = 1
@@ -2357,34 +2373,41 @@ function Window:_Build()
         title.Parent = header
         self._title = title
         self._header = header
-        -- content
+
+        -- Content (fills space between header and tabbar)
         local content = Instance.new("Frame")
+        content.Name = "ContentArea"
         content.BackgroundTransparency = 1
-        content.Size = UDim2.fromScale(1, 1)
+        content.Size = UDim2.new(1, 0, 1, -98) -- minus header(32) + gap(8) + tabbar(50) + gap(8)
+        content.Position = UDim2.fromOffset(0, 40)
         content.Parent = inner
         self._contentArea = content
-        -- bottom tab bar
+
+        -- Bottom tab bar
         local tabbar = Instance.new("Frame")
+        tabbar.Name = "TabBar"
         tabbar.BackgroundTransparency = 1
-        tabbar.Size = UDim2.fromScale(1, 50)
+        tabbar.Size = UDim2.new(1, 0, 0, 50)
+        tabbar.Position = UDim2.new(0, 0, 1, -50)
         tabbar.Parent = inner
-        local tbLayout = uiList(tabbar, Enum.FillDirection.Horizontal, 4, Enum.HorizontalAlignment.Center)
+        local tbLayout = Instance.new("UIListLayout")
+        tbLayout.FillDirection = Enum.FillDirection.Horizontal
+        tbLayout.Padding = UDim.new(0, 4)
+        tbLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        tbLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+        tbLayout.Parent = tabbar
         self._sidebar = tabbar
     else
-        -- Desktop: horizontal split (sidebar | content)
-        inner = Instance.new("Frame")
-        inner.BackgroundTransparency = 1
-        inner.Size = UDim2.fromScale(1, 1)
-        inner.Parent = win.Surface
-        local il = Instance.new("UIListLayout")
-        il.FillDirection = Enum.FillDirection.Horizontal
-        il.Padding = UDim.new(0, 12)
-        il.Parent = inner
+        --===========================================================
+        -- DESKTOP LAYOUT: sidebar (left, 200px) + content (right, fills)
+        -- Uses manual positioning — no UIListLayout on inner
+        --===========================================================
 
-        -- Sidebar
+        -- Sidebar (fixed 200px wide, full height)
         local sidebar = Neumorph({
             Name = "Sidebar",
-            Size = UDim2.fromOffset(200, 1) - UDim2.fromOffset(0, 0),
+            Size = UDim2.new(0, 200, 1, 0),
+            Position = UDim2.fromOffset(0, 0),
             Color = Theme.SurfaceLo,
             Radius = 14,
             ShadowOffset = 0,
@@ -2393,44 +2416,41 @@ function Window:_Build()
         self._sidebarNeu = sidebar
         self._sidebar = sidebar.Surface
         uiPadding(sidebar.Surface, 16, 16, 16, 16)
-        local sl = uiList(sidebar.Surface, Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Center)
 
         -- Title
         local title = Instance.new("TextLabel")
         title.BackgroundTransparency = 1
-        title.Size = UDim2.fromScale(1, 0)
-        title.AutomaticSize = Enum.AutomaticSize.Y
+        title.Size = UDim2.new(1, 0, 0, 28)
+        title.Position = UDim2.fromOffset(0, 0)
         title.Font = Enum.Font.GothamBlack
         title.TextSize = 22
         title.TextColor3 = Theme.Text
         title.TextXAlignment = Enum.TextXAlignment.Left
         title.Text = self.Name
-        title.LayoutOrder = 0
         title.Parent = sidebar.Surface
         self._title = title
 
         -- Subtitle
         local sub = Instance.new("TextLabel")
         sub.BackgroundTransparency = 1
-        sub.Size = UDim2.fromScale(1, 0)
-        sub.AutomaticSize = Enum.AutomaticSize.Y
+        sub.Size = UDim2.new(1, 0, 0, 16)
+        sub.Position = UDim2.fromOffset(0, 30)
         sub.Font = Enum.Font.Gotham
         sub.TextSize = 11
         sub.TextColor3 = Theme.TextMuted
         sub.TextXAlignment = Enum.TextXAlignment.Left
         sub.Text = "Prism v" .. (_G.__PRISM_REF and _G.__PRISM_REF.Version or "1.0")
-        sub.LayoutOrder = 1
         sub.Parent = sidebar.Surface
         self._subtitle = sub
 
         -- Search box
         local searchNeu = Neumorph({
             Name = "Search",
-            Size = UDim2.fromScale(1, 0) + UDim2.fromOffset(0, 32),
+            Size = UDim2.new(1, 0, 0, 32),
+            Position = UDim2.fromOffset(0, 54),
             Color = Theme.SurfaceHi,
             Radius = 10,
             ShadowOffset = 0,
-            LayoutOrder = 2,
             Parent = sidebar.Surface,
         })
         self._searchNeu = searchNeu
@@ -2450,76 +2470,82 @@ function Window:_Build()
             self:_FilterTabs(searchBox.Text)
         end)
 
-        -- Tab list container (scrollable)
+        -- Tab list (scrollable, fills remaining sidebar space)
         local tabList = Instance.new("ScrollingFrame")
+        tabList.Name = "TabList"
         tabList.BackgroundTransparency = 1
         tabList.BorderSizePixel = 0
-        tabList.Size = UDim2.fromScale(1, 1)
+        tabList.Size = UDim2.new(1, 0, 1, -148) -- minus title(28)+sub(16+2)+search(32+2)+footer(28+2)+padding(32)
+        tabList.Position = UDim2.fromOffset(0, 94)
         tabList.CanvasSize = UDim2.fromScale(0, 0)
         tabList.AutomaticCanvasSize = Enum.AutomaticSize.Y
         tabList.ScrollBarThickness = 2
         tabList.ScrollBarImageColor3 = Theme.Accent
         tabList.ScrollBarImageTransparency = 0.5
-        tabList.LayoutOrder = 3
         uiPadding(tabList, 0, 0, 0, 0)
-        uiList(tabList, Enum.FillDirection.Vertical, 4, Enum.HorizontalAlignment.Center)
+        local tll = Instance.new("UIListLayout")
+        tll.FillDirection = Enum.FillDirection.Vertical
+        tll.Padding = UDim.new(0, 4)
+        tll.SortOrder = Enum.SortOrder.LayoutOrder
+        tll.Parent = tabList
         tabList.Parent = sidebar.Surface
         self._tabList = tabList
 
         -- Sidebar footer (save/load buttons)
         local footer = Instance.new("Frame")
+        footer.Name = "Footer"
         footer.BackgroundTransparency = 1
-        footer.Size = UDim2.fromScale(1, 0)
-        footer.AutomaticSize = Enum.AutomaticSize.Y
-        footer.LayoutOrder = 4
-        uiList(footer, Enum.FillDirection.Horizontal, 4, Enum.HorizontalAlignment.Center)
+        footer.Size = UDim2.new(1, 0, 0, 28)
+        footer.Position = UDim2.new(0, 0, 1, -28)
         footer.Parent = sidebar.Surface
         self._sidebarFooter = footer
+        local fLayout = Instance.new("UIListLayout")
+        fLayout.FillDirection = Enum.FillDirection.Horizontal
+        fLayout.Padding = UDim.new(0, 4)
+        fLayout.Parent = footer
 
         local saveBtn = Instance.new("TextButton")
         saveBtn.BackgroundTransparency = 1
-        saveBtn.Size = UDim2.fromScale(0.5, 0) + UDim2.fromOffset(-2, 28)
+        saveBtn.Size = UDim2.new(0.5, -2, 1, 0)
         saveBtn.Font = Enum.Font.GothamBold
         saveBtn.TextSize = 11
         saveBtn.TextColor3 = Theme.Accent
         saveBtn.Text = "Save"
         saveBtn.Parent = footer
         saveBtn.MouseButton1Click:Connect(function()
-            Prism:SaveConfig()
+            _G.__PRISM_REF:SaveConfig()
             Notifications:Show({ kind="success", title="Config saved", content="All flag values stored." })
         end)
 
         local loadBtn = Instance.new("TextButton")
         loadBtn.BackgroundTransparency = 1
-        loadBtn.Size = UDim2.fromScale(0.5, 0) + UDim2.fromOffset(-2, 28)
+        loadBtn.Size = UDim2.new(0.5, -2, 1, 0)
         loadBtn.Font = Enum.Font.GothamBold
         loadBtn.TextSize = 11
         loadBtn.TextColor3 = Theme.TextDim
         loadBtn.Text = "Load"
         loadBtn.Parent = footer
         loadBtn.MouseButton1Click:Connect(function()
-            Prism:LoadConfig()
+            _G.__PRISM_REF:LoadConfig()
             Notifications:Show({ kind="info", title="Config loaded", content="All flag values restored." })
         end)
 
-        -- Content area
+        -- Content area (fills remaining width next to sidebar)
         local contentArea = Instance.new("Frame")
+        contentArea.Name = "ContentArea"
         contentArea.BackgroundTransparency = 1
-        contentArea.Size = UDim2.fromScale(1, 1)
+        contentArea.Size = UDim2.new(1, -212, 1, 0)
+        contentArea.Position = UDim2.fromOffset(212, 0)
         contentArea.Parent = inner
         self._contentArea = contentArea
 
-        -- Window controls (minimize / close)
-        local controls = Instance.new("Frame")
-        controls.BackgroundTransparency = 1
-        controls.Size = UDim2.fromOffset(0, 0)
-        controls.Parent = win.Surface
-        -- Minimize button (top-right corner)
+        -- Minimize button (top-right corner of window)
         local minBtn = Instance.new("TextButton")
+        minBtn.Name = "Minimize"
         minBtn.BackgroundTransparency = 1
         minBtn.Size = UDim2.fromOffset(24, 24)
         minBtn.AnchorPoint = Vector2.new(1, 0)
-        minBtn.Position = UDim2.fromOffset(-12, 12)
+        minBtn.Position = UDim2.new(1, -12, 0, 12)
         minBtn.Font = Enum.Font.GothamBold
         minBtn.TextSize = 16
         minBtn.TextColor3 = Theme.TextDim
@@ -2532,7 +2558,7 @@ function Window:_Build()
         self._minBtn = minBtn
     end
 
-    -- Make draggable (desktop only, from header)
+    -- Make draggable (desktop only, from header or window surface)
     if not isMob then
         makeDraggable(self._frame, self._header or win.Surface)
     end
@@ -2546,7 +2572,8 @@ function Window:CreateTab(opts)
         t._entry.Parent = self._tabList
     else
         t._entry.Parent = self._sidebar
-        t._entry.Size = UDim2.fromScale(1, 1) - UDim2.fromOffset(0, 0)
+        -- Mobile: fixed-width tabs so multiple fit in the bottom bar
+        t._entry.Size = UDim2.fromOffset(80, 44)
     end
     t._content.Parent = self._contentArea
     if not self.CurrentTab then
@@ -2615,11 +2642,11 @@ function Window:Restore(restoreBtn)
 end
 
 function Window:SaveConfig()
-    Prism:SaveConfig()
+    _G.__PRISM_REF:SaveConfig()
 end
 
 function Window:LoadConfig()
-    Prism:LoadConfig()
+    _G.__PRISM_REF:LoadConfig()
 end
 
 function Window:Build()
